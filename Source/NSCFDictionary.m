@@ -93,13 +93,16 @@ NSCFTYPE_VARS
   CFIndex count;
   const void **keys;
   NSArray *array;
-  
+
   count = CFDictionaryGetCount((CFDictionaryRef) self);
+  if (count == 0)
+    return [[NSArray array] objectEnumerator];
+
   keys = (const void**) malloc(sizeof(void*) * count);
-  
+
   CFDictionaryGetKeysAndValues((CFDictionaryRef) self,
     keys, NULL);
-  
+
   array = [NSArray arrayWithObjects: (const id*)keys
                               count: count];
 
@@ -136,11 +139,36 @@ NSCFTYPE_VARS
                                    objects: (id[])stackbuf
                                      count: (NSUInteger)len
 {
-  NSEnumerator *enuM = [self keyEnumerator];
-  
-  return [enuM countByEnumeratingWithState: state
-                                   objects: stackbuf
-                                     count: len];
+  CFIndex count = CFDictionaryGetCount((CFDictionaryRef) self);
+
+  if (state->state == 0)
+    {
+      state->state = 1;
+      state->extra[0] = 0;
+      state->mutationsPtr = (unsigned long *)self;
+    }
+
+  NSUInteger idx = (NSUInteger)state->extra[0];
+  if (idx >= (NSUInteger)count)
+    return 0;
+
+  const void **keys = (const void**) malloc(sizeof(void*) * count);
+  CFDictionaryGetKeysAndValues((CFDictionaryRef) self, keys, NULL);
+
+  NSUInteger batch = 0;
+  while (batch < len && idx < (NSUInteger)count)
+    {
+      stackbuf[batch] = (id)keys[idx];
+      batch++;
+      idx++;
+    }
+
+  free((void*)keys);
+
+  state->extra[0] = (unsigned long)idx;
+  state->itemsPtr = stackbuf;
+
+  return batch;
 }
 
 - (void) setObject: anObject forKey: (id)aKey

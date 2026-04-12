@@ -321,13 +321,18 @@ static NSStringEncoding *nsencodings = NULL;
           maxLength: (NSUInteger) maxLength
            encoding: (NSStringEncoding) encoding
 {
-  CFStringEncoding enc = CFStringConvertEncodingToNSStringEncoding (encoding);
+  CFStringEncoding enc = CFStringConvertNSStringEncodingToEncoding (encoding);
   return (BOOL)CFStringGetCString ((CFStringRef) self, buffer, maxLength, enc);
 }
 
 - (NSUInteger) lengthOfBytesUsingEncoding: (NSStringEncoding) encoding
 {
-  return [self lengthOfBytesUsingEncoding: encoding];
+  CFStringEncoding enc = CFStringConvertNSStringEncodingToEncoding(encoding);
+  CFIndex len = CFStringGetLength((CFStringRef)self);
+  CFIndex usedBufLen = 0;
+  CFStringGetBytes((CFStringRef)self, CFRangeMake(0, len), enc, 0, false,
+                   NULL, 0, &usedBufLen);
+  return (NSUInteger)usedBufLen;
 }
 
 - (NSUInteger) maximumLengthOfBytesUsingEncoding: (NSStringEncoding) encoding
@@ -340,7 +345,7 @@ static NSStringEncoding *nsencodings = NULL;
 - (NSData*) dataUsingEncoding: (NSStringEncoding) encoding
          allowLossyConversion: (BOOL) flag
 {
-  CFStringEncoding enc = CFStringConvertEncodingToNSStringEncoding (encoding);
+  CFStringEncoding enc = CFStringConvertNSStringEncodingToEncoding (encoding);
   return (NSData*)CFStringCreateExternalRepresentation (NULL,
                                                         (CFStringRef) self,
                                                         enc, flag ? '?' : 0);
