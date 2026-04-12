@@ -50,6 +50,10 @@
 /* From NSDate.m in GNUstep-base */
 #define DISTANT_FUTURE	63113990400.0
 
+/* Atomic helpers for Boolean flags shared across threads */
+#define ATOMIC_LOAD_BOOL(ptr)       __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
+#define ATOMIC_STORE_BOOL(ptr, val) __atomic_store_n(ptr, val, __ATOMIC_RELEASE)
+
 static CFTypeID _kCFRunLoopTypeID = 0;
 static CFTypeID _kCFRunLoopSourceTypeID = 0;
 static CFTypeID _kCFRunLoopObserverTypeID = 0;
@@ -482,10 +486,10 @@ CFRunLoopNotifyObservers (CFRunLoopRef rl, GSRunLoopContextRef context, CFRunLoo
   observers = (CFRunLoopObserverRef*) CFAllocatorAllocate(NULL,
                                    sizeof(CFRunLoopObserverRef)*count, 0);
   CFSetGetValues(context->observers, (const void**) observers);
-  GSMutexUnlock (&rl->_lock);
 
   for (i = 0; i < count; i++)
     CFRetain(observers[i]);
+  GSMutexUnlock (&rl->_lock);
 
   for (i = 0; i < count; i++)
     {
@@ -611,10 +615,10 @@ CFRunLoopProcessSourcesVersion0 (CFRunLoopRef rl, CFAbsoluteTime now,
     {
       CFRunLoopSourceRef source = sources[i];
 
-      if (source->_isValid && source->_isSignaled)
+      if (source->_isValid && ATOMIC_LOAD_BOOL(&source->_isSignaled))
         {
           hadSource = true;
-          source->_isSignaled = false;
+          ATOMIC_STORE_BOOL(&source->_isSignaled, false);
           source->_context.perform(source->_context.info);
         }
 
@@ -794,7 +798,9 @@ CFRunLoopRunInMode (CFStringRef mode, CFTimeInterval seconds,
   int numSources = 0;
   GSRunLoopContextRef context = GSRunLoopContextGet(rl, mode);
 
+  GSMutexLock (&rl->_lock);
   rl->_currentMode = mode;
+  GSMutexUnlock (&rl->_lock);
 
   // Notify observers with kCFRunLoopEntry activity.
   CFRunLoopNotifyObservers(rl, context, kCFRunLoopEntry);
@@ -852,10 +858,10 @@ CFRunLoopRunInMode (CFStringRef mode, CFTimeInterval seconds,
             }
         }
 
-      if (rl->_stop)
+      if (ATOMIC_LOAD_BOOL(&rl->_stop))
         {
           exitReason = kCFRunLoopRunStopped;
-          rl->_stop = false;
+          ATOMIC_STORE_BOOL(&rl->_stop, false);
           break;
         }
 
@@ -865,7 +871,7 @@ CFRunLoopRunInMode (CFStringRef mode, CFTimeInterval seconds,
         
       // Notify observers with kCFRunLoopBeforeWaiting activity.
       CFRunLoopNotifyObservers(rl, context, kCFRunLoopBeforeWaiting);
-      rl->_isWaiting = true;
+      ATOMIC_STORE_BOOL(&rl->_isWaiting, true);
 
       pfd = CFRunLoopPrepareForPoll(pfd, &numSources, rl, context);
 
@@ -873,7 +879,7 @@ CFRunLoopRunInMode (CFStringRef mode, CFTimeInterval seconds,
       // printf("poll %d sources\n", numSources);
       sourcesFired = poll(pfd, numSources, timeout);
 
-      rl->_isWaiting = false;
+      ATOMIC_STORE_BOOL(&rl->_isWaiting, false);
       // Notify observers with kCFRunLoopAfterWaiting activity.
       CFRunLoopNotifyObservers(rl, context, kCFRunLoopAfterWaiting);
 
@@ -934,7 +940,9 @@ CFRunLoopRunInMode (CFStringRef mode, CFTimeInterval seconds,
 
   // Notify observers with kCFRunLoopExit activity.
   CFRunLoopNotifyObservers(rl, context, kCFRunLoopExit);
+  GSMutexLock (&rl->_lock);
   rl->_currentMode = NULL;
+  GSMutexUnlock (&rl->_lock);
 
   CFAllocatorDeallocate(NULL, pfd);
 
@@ -959,14 +967,16 @@ CFRunLoopWakeUp (CFRunLoopRef rl)
 void
 CFRunLoopStop (CFRunLoopRef rl)
 {
+  GSMutexLock (&rl->_lock);
   if (rl->_currentMode != NULL)
-    rl->_stop = true;
+    ATOMIC_STORE_BOOL(&rl->_stop, true);
+  GSMutexUnlock (&rl->_lock);
 }
 
 Boolean
 CFRunLoopIsWaiting (CFRunLoopRef rl)
 {
-  return rl->_isWaiting;
+  return ATOMIC_LOAD_BOOL(&rl->_isWaiting);
 }
 
 void
@@ -1020,12 +1030,12 @@ CFRunLoopCopyAllModes (CFRunLoopRef rl)
 CFStringRef
 CFRunLoopCopyCurrentMode (CFRunLoopRef rl)
 {
-  CFStringRef mode = rl->_currentMode;
-
-  if (mode != NULL)
-    return CFRetain (rl->_currentMode);
-  else
-    return NULL;
+  CFStringRef result = NULL;
+  GSMutexLock (&rl->_lock);
+  if (rl->_currentMode != NULL)
+    result = CFRetain (rl->_currentMode);
+  GSMutexUnlock (&rl->_lock);
+  return result;
 }
 
 static void
@@ -1521,7 +1531,7 @@ CFRunLoopSourceRemoveInvalidated(const void *key, const void *value, void *sourc
 {
   GSRunLoopContextRef ctxt = (GSRunLoopContextRef) value;
   CFIndex idx = CFArrayGetFirstIndexOfValue(ctxt->sources0,
-                                            CFRangeMake(0, CFArrayGetCount(ctxt->timers)),
+                                            CFRangeMake(0, CFArrayGetCount(ctxt->sources0)),
                                             (CFRunLoopSourceRef) source);
   
   if (idx != -1)
@@ -1563,7 +1573,7 @@ CFRunLoopSourceIsValid (CFRunLoopSourceRef source)
 void
 CFRunLoopSourceSignal (CFRunLoopSourceRef source)
 {
-  source->_isSignaled = true;
+  ATOMIC_STORE_BOOL(&source->_isSignaled, true);
   CFRunLoopWakeUp(source->_runloop);
 }
 
