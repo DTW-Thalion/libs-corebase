@@ -50,6 +50,10 @@
 /* From NSDate.m in GNUstep-base */
 #define DISTANT_FUTURE	63113990400.0
 
+/* PF-R2: Stack buffer size for snapshot arrays in run loop iteration.
+   Avoids heap allocation when observer/timer/source counts are small. */
+#define CFRUNLOOP_STACK_BUFFER_SIZE 64
+
 /* Atomic helpers for Boolean flags shared across threads */
 #define ATOMIC_LOAD_BOOL(ptr)       __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
 #define ATOMIC_STORE_BOOL(ptr, val) __atomic_store_n(ptr, val, __ATOMIC_RELEASE)
@@ -478,13 +482,17 @@ CFRunLoopRun (void)
 static void
 CFRunLoopNotifyObservers (CFRunLoopRef rl, GSRunLoopContextRef context, CFRunLoopActivity activity)
 {
+  CFRunLoopObserverRef stackBuf[CFRUNLOOP_STACK_BUFFER_SIZE];
   CFRunLoopObserverRef *observers;
   CFIndex i, count;
 
   GSMutexLock (&rl->_lock);
   count = CFSetGetCount(context->observers);
-  observers = (CFRunLoopObserverRef*) CFAllocatorAllocate(NULL,
-                                   sizeof(CFRunLoopObserverRef)*count, 0);
+  if (count <= CFRUNLOOP_STACK_BUFFER_SIZE)
+    observers = stackBuf;
+  else
+    observers = (CFRunLoopObserverRef*) CFAllocatorAllocate(NULL,
+                                     sizeof(CFRunLoopObserverRef)*count, 0);
   CFSetGetValues(context->observers, (const void**) observers);
 
   for (i = 0; i < count; i++)
@@ -506,7 +514,8 @@ CFRunLoopNotifyObservers (CFRunLoopRef rl, GSRunLoopContextRef context, CFRunLoo
       CFRelease(observer);
     }
 
-  CFAllocatorDeallocate(NULL, (void*) observers);
+  if (observers != stackBuf)
+    CFAllocatorDeallocate(NULL, (void*) observers);
 }
 
 static Boolean
@@ -514,6 +523,7 @@ CFRunLoopProcessTimers (CFRunLoopRef rl, CFAbsoluteTime now,
                         GSRunLoopContextRef context, Boolean singleSource)
 {
   CFIndex i, count;
+  CFRunLoopTimerRef stackBuf[CFRUNLOOP_STACK_BUFFER_SIZE];
   CFRunLoopTimerRef *timers;
   Boolean hadTimer = false;
 
@@ -523,8 +533,11 @@ CFRunLoopProcessTimers (CFRunLoopRef rl, CFAbsoluteTime now,
   // Make a copy of timers so that we don't hold the mutex when using the callback
   // and cause a deadlock.
   count = CFArrayGetCount(context->timers);
-  timers = (CFRunLoopTimerRef*) CFAllocatorAllocate(NULL,
-                                sizeof(CFRunLoopTimerRef)*count, 0);
+  if (count <= CFRUNLOOP_STACK_BUFFER_SIZE)
+    timers = stackBuf;
+  else
+    timers = (CFRunLoopTimerRef*) CFAllocatorAllocate(NULL,
+                                  sizeof(CFRunLoopTimerRef)*count, 0);
 
   CFArrayGetValues(context->timers, CFRangeMake(0, count), (const void**) timers);
   GSMutexUnlock (&rl->_lock);
@@ -536,7 +549,7 @@ CFRunLoopProcessTimers (CFRunLoopRef rl, CFAbsoluteTime now,
     {
       CFRunLoopTimerRef timer = timers[i];
       CFAbsoluteTime nextFireDate = CFRunLoopTimerGetNextFireDate(timer);
-      
+
       if (CFRunLoopTimerIsValid(timer))
         {
           if (nextFireDate < now || fabs(now - nextFireDate) < 0.001)
@@ -559,12 +572,13 @@ CFRunLoopProcessTimers (CFRunLoopRef rl, CFAbsoluteTime now,
         CFRunLoopTimerRemoveFromRunLoop(rl, timer);
 
       CFRelease(timer);
-      
+
       if (singleSource && hadTimer)
         break;
     }
 
-  CFAllocatorDeallocate(NULL, (void*) timers);
+  if (timers != stackBuf)
+    CFAllocatorDeallocate(NULL, (void*) timers);
   return hadTimer;
 }
 
@@ -593,6 +607,7 @@ CFRunLoopProcessSourcesVersion0 (CFRunLoopRef rl, CFAbsoluteTime now,
 		GSRunLoopContextRef context, Boolean singleSource)
 {
   CFIndex i, count;
+  CFRunLoopSourceRef stackBuf[CFRUNLOOP_STACK_BUFFER_SIZE];
   CFRunLoopSourceRef *sources;
   Boolean hadSource = false;
 
@@ -601,10 +616,13 @@ CFRunLoopProcessSourcesVersion0 (CFRunLoopRef rl, CFAbsoluteTime now,
 
   GSMutexLock (&rl->_lock);
   count = CFArrayGetCount(context->sources0);
-  sources = (CFRunLoopSourceRef*) CFAllocatorAllocate(NULL,
-                                  sizeof(CFRunLoopSourceRef)*count, 0);
+  if (count <= CFRUNLOOP_STACK_BUFFER_SIZE)
+    sources = stackBuf;
+  else
+    sources = (CFRunLoopSourceRef*) CFAllocatorAllocate(NULL,
+                                    sizeof(CFRunLoopSourceRef)*count, 0);
 
-  CFArrayGetValues(context->sources0, CFRangeMake(0, CFArrayGetCount(context->sources0)),
+  CFArrayGetValues(context->sources0, CFRangeMake(0, count),
                    (const void**) sources);
   GSMutexUnlock (&rl->_lock);
 
@@ -623,12 +641,13 @@ CFRunLoopProcessSourcesVersion0 (CFRunLoopRef rl, CFAbsoluteTime now,
         }
 
       CFRelease(source);
-      
+
       if (singleSource && hadSource)
         break;
     }
 
-  CFAllocatorDeallocate(NULL, (void*) sources);
+  if (sources != stackBuf)
+    CFAllocatorDeallocate(NULL, (void*) sources);
 
   return hadSource;
 }
