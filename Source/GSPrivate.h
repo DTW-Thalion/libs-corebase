@@ -88,7 +88,7 @@
 #define GSMutexInitialize(x) pthread_mutex_init(x, NULL)
 #define GSMutexLock(x) pthread_mutex_lock(x)
 #define GSMutexUnlock(x) pthread_mutex_unlock(x)
-#define GSMutexDestroy(x) pthraed_mutex_destroy(x)
+#define GSMutexDestroy(x) pthread_mutex_destroy(x)
 
 #if defined(__llvm__) \
       || (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1))
@@ -269,5 +269,9 @@ GSRuntimeDeallocateInstance (CFTypeRef cf);
 
 #define GS_MAX(a,b) (a > b ? a : b)
 #define GS_MIN(a,b) (a < b ? a : b)
+
+/* Shared atomic macros for lock-free boolean flags */
+#define ATOMIC_LOAD_BOOL(ptr)       __atomic_load_n(ptr, __ATOMIC_ACQUIRE)
+#define ATOMIC_STORE_BOOL(ptr, val) __atomic_store_n(ptr, val, __ATOMIC_RELEASE)
 
 #endif /* __GSPRIVATE_H__ */

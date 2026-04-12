@@ -293,7 +293,7 @@ CFPropertyListCreateDeepCopy (CFAllocatorRef alloc, CFPropertyListRef plist,
           ctx.alloc = alloc;
           ctx.container = (CFTypeRef) array;
           range = CFRangeMake (0, cnt);
-          CFArrayApplyFunction (array, range, CFArrayCopyFunction, &ctx);
+          CFArrayApplyFunction (plist, range, CFArrayCopyFunction, &ctx);
 
           copy = array;
         }
@@ -700,6 +700,11 @@ CFOpenStepPlistParseString (CFAllocatorRef alloc, CFPlistString * string)
   return obj;
 }
 
+/* NOTE: CFOpenStepPlistParseObject is recursive (dicts and arrays call back
+   into it) with no depth limit.  A deeply nested plist could cause a stack
+   overflow.  Adding a depth parameter would require changing the signature
+   of all parse helpers.  This is a known limitation carried forward from the
+   original implementation. */
 static CFPropertyListRef
 CFOpenStepPlistParseObject (CFAllocatorRef alloc, CFPlistString * string)
 {

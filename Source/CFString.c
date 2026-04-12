@@ -208,8 +208,12 @@ CFStringHash (CFTypeRef cf)
           if (CFStringIsUnicode (str))
             {
               len = CFStringGetLength (str) * sizeof (UniChar);
-              ((struct __CFString *) str)->_hash =
-                GSHashBytes (str->_contents, len);
+              /* Benign data race: concurrent threads may compute and store
+                 the same hash value simultaneously.  We use an atomic store
+                 to avoid undefined behavior from a non-atomic write/write
+                 race on _hash. */
+              __atomic_store_n (&((struct __CFString *) str)->_hash,
+                GSHashBytes (str->_contents, len), __ATOMIC_RELEASE);
               return str->_hash;
             }
         }
@@ -223,8 +227,10 @@ CFStringHash (CFTypeRef cf)
   CFStringGetCharacters (str, CFRangeMake (0, len / 2), buf);
 
   hash = GSHashBytes (buf, len);
+  /* Benign data race: see comment above. */
   if (!isObjc)
-    ((struct __CFString *) str)->_hash = hash;
+    __atomic_store_n (&((struct __CFString *) str)->_hash, hash,
+      __ATOMIC_RELEASE);
 
   CFAllocatorDeallocate (kCFAllocatorSystemDefault, buf);
   return hash;
@@ -948,7 +954,7 @@ Boolean
 CFStringGetSurrogatePairForLongCharacter (UTF32Char character,
                                           UniChar * surrogates)
 {
-  if (character > 0x10000)
+  if (character > 0x10FFFF || character < 0x10000)
     return false;
 
   surrogates[0] = U16_LEAD (character);
