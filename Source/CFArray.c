@@ -446,7 +446,10 @@ CFArrayCheckCapacityAndGrow (CFMutableArrayRef array, CFIndex newCapacity)
 
   if (mArray->_capacity < newCapacity)
     {
-      newCapacity = mArray->_capacity + DEFAULT_ARRAY_CAPACITY;
+      CFIndex grown = mArray->_capacity * 2;
+      if (grown < newCapacity) grown = newCapacity;
+      if (grown < DEFAULT_ARRAY_CAPACITY) grown = DEFAULT_ARRAY_CAPACITY;
+      newCapacity = grown;
 
       mArray->_contents = CFAllocatorReallocate (CFGetAllocator (mArray),
                                                  mArray->_contents,
