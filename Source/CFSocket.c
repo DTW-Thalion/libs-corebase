@@ -172,14 +172,17 @@ CFSocketGetTypeID (void)
 }
 
 #if HAVE_LIBDISPATCH
+#define ATOMIC_LOAD_FLAG(ptr) __atomic_load_n((ptr), __ATOMIC_ACQUIRE)
+#define ATOMIC_STORE_FLAG(ptr, val) __atomic_store_n((ptr), (val), __ATOMIC_RELEASE)
+
 static void
 CFSocketDispatchReadEvent(void* p)
 {
   CFSocketRef socket = (CFSocketRef) p;
   CFRunLoopSourceRef src = socket->_source;
   
-  socket->_readFired = true;
-  
+  ATOMIC_STORE_FLAG(&socket->_readFired, true);
+
   if (src != NULL)
     CFRunLoopSourceSignal(src);
 }
@@ -190,8 +193,8 @@ CFSocketDispatchWriteEvent(void* p)
   CFSocketRef socket = (CFSocketRef) p;
   CFRunLoopSourceRef src = socket->_source;
   
-  socket->_writeFired = true;
-  
+  ATOMIC_STORE_FLAG(&socket->_writeFired, true);
+
   if (src != NULL)
     CFRunLoopSourceSignal(src);
 }
@@ -375,9 +378,9 @@ CFSocketCopyAddress (CFSocketRef s)
   GSMutexLock (&s->_lock);
   if (s->_address == NULL)
     {
-      struct sockaddr addr;
-      socklen_t addrlen;
-      getsockname (s->_socket, &addr, &addrlen);
+      struct sockaddr_storage addr;
+      socklen_t addrlen = sizeof(addr);
+      getsockname (s->_socket, (struct sockaddr*)&addr, &addrlen);
       s->_address = CFDataCreate (CFGetAllocator (s), (const UInt8*)&addr,
                                   (CFIndex)addrlen);
     }
@@ -394,16 +397,16 @@ CFSocketCopyPeerAddress (CFSocketRef s)
   CFDataRef ret = NULL;
   
   GSMutexLock (&s->_lock);
-  if (s->_address == NULL)
+  if (s->_peerAddress == NULL)
     {
-      struct sockaddr addr;
-      socklen_t addrlen;
-      getpeername (s->_socket, &addr, &addrlen);
-      s->_address = CFDataCreate (CFGetAllocator (s), (const UInt8*)&addr,
+      struct sockaddr_storage addr;
+      socklen_t addrlen = sizeof(addr);
+      getpeername (s->_socket, (struct sockaddr*)&addr, &addrlen);
+      s->_peerAddress = CFDataCreate (CFGetAllocator (s), (const UInt8*)&addr,
                                   (CFIndex)addrlen);
     }
-  if (s->_address != NULL)
-    ret = CFRetain (s->_address);
+  if (s->_peerAddress != NULL)
+    ret = CFRetain (s->_peerAddress);
   GSMutexUnlock (&s->_lock);
   
   return ret;
@@ -518,30 +521,30 @@ CFSocketUpdateDispatchSources (CFSocketRef s)
     
   if (s->_cbTypes & READ_EVENTS)
     {
-      if (!s->_readResumed)
+      if (!ATOMIC_LOAD_FLAG(&s->_readResumed))
         {
           dispatch_resume(s->_readSource);
-          s->_readResumed = true;
+          ATOMIC_STORE_FLAG(&s->_readResumed, true);
         }
     }
-  else if (s->_readResumed)
+  else if (ATOMIC_LOAD_FLAG(&s->_readResumed))
     {
       dispatch_suspend(s->_readSource);
-      s->_readResumed = false;
+      ATOMIC_STORE_FLAG(&s->_readResumed, false);
     }
-  
+
   if (s->_cbTypes & WRITE_EVENTS)
     {
-      if (!s->_writeResumed)
+      if (!ATOMIC_LOAD_FLAG(&s->_writeResumed))
         {
           dispatch_resume(s->_writeSource);
-          s->_writeResumed = true;
+          ATOMIC_STORE_FLAG(&s->_writeResumed, true);
         }
     }
-  else if (s->_writeResumed)
+  else if (ATOMIC_LOAD_FLAG(&s->_writeResumed))
     {
       dispatch_suspend(s->_writeSource);
-      s->_writeResumed = false;
+      ATOMIC_STORE_FLAG(&s->_writeResumed, false);
     }
 #endif
 }
@@ -549,16 +552,20 @@ CFSocketUpdateDispatchSources (CFSocketRef s)
 void
 CFSocketDisableCallBacks (CFSocketRef s, CFOptionFlags cbTypes)
 {
+  GSMutexLock (&s->_lock);
   s->_cbTypes &= ~cbTypes;
+  GSMutexUnlock (&s->_lock);
   CFSocketUpdateDispatchSources(s);
 }
 
 void
 CFSocketEnableCallBacks (CFSocketRef s, CFOptionFlags cbTypes)
 {
+  GSMutexLock (&s->_lock);
   if (s->_isConnected)
     cbTypes &= ~kCFSocketConnectCallBack;
   s->_cbTypes |= cbTypes;
+  GSMutexUnlock (&s->_lock);
   CFSocketUpdateDispatchSources(s);
 }
 
@@ -600,8 +607,8 @@ CFSocketSendData (CFSocketRef s, CFDataRef address, CFDataRef data,
       addr = (struct sockaddr*) CFDataGetBytePtr(address);
       len = CFDataGetLength(address);
       
-      err = sendto(s->_socket, CFDataGetBytePtr(data), 0,
-                   CFDataGetLength(data), addr, len);
+      err = sendto(s->_socket, CFDataGetBytePtr(data), CFDataGetLength(data),
+                   0, addr, len);
     }
   else
     {
@@ -619,19 +626,29 @@ CFSocketSendData (CFSocketRef s, CFDataRef address, CFDataRef data,
 void
 CFSocketInvalidate (CFSocketRef s)
 {
+  CFSocketNativeHandle fd;
+
 #if HAVE_LIBDISPATCH
   if (s->_source != NULL)
     CFRunLoopSourceInvalidate(s->_source);
 #endif
-  if (s->_socket != -1 && s->_opts & kCFSocketCloseOnInvalidate)
+
+  GSMutexLock (&s->_lock);
+  fd = s->_socket;
+  if (fd != -1 && s->_opts & kCFSocketCloseOnInvalidate)
+    s->_socket = -1;
+  else
+    fd = -1;
+  GSMutexUnlock (&s->_lock);
+
+  if (fd != -1)
     {
       GSMutexLock (&_kCFSocketObjectsLock);
       CFDictionaryRemoveValue(_kCFSocketObjects,
-                              (void*)(uintptr_t) s->_socket);
+                              (void*)(uintptr_t) fd);
       GSMutexUnlock (&_kCFSocketObjectsLock);
-      
-      closesocket (s->_socket);
-      s->_socket = -1;
+
+      closesocket (fd);
     }
 }
 
@@ -660,7 +677,7 @@ CFSocketRLSPerform (void* p)
   if (s->_callback == NULL)
     return;
   
-  if (s->_readFired)
+  if (ATOMIC_LOAD_FLAG(&s->_readFired))
     {
       if (s->_isListening)
         {
@@ -722,10 +739,10 @@ CFSocketRLSPerform (void* p)
           
           s->_callback(s, kCFSocketReadCallBack, NULL, NULL, s->_ctx.info);
         }  
-      s->_readFired = false;
+      ATOMIC_STORE_FLAG(&s->_readFired, false);
     }
-  
-  if (s->_writeFired)
+
+  if (ATOMIC_LOAD_FLAG(&s->_writeFired))
     {
       if (!s->_isConnected && s->_cbTypes & kCFSocketConnectCallBack)
         {
@@ -761,7 +778,7 @@ CFSocketRLSPerform (void* p)
             }  
           s->_callback(s, kCFSocketWriteCallBack, NULL, NULL, s->_ctx.info);
         }
-      s->_writeFired = false;
+      ATOMIC_STORE_FLAG(&s->_writeFired, false);
     }
 }
 
