@@ -69,6 +69,12 @@
 	characters per input character).
 	* Tests/CFURL/escaping.m: Add a non-ASCII escaping test.
 
+2026-06-27  Todd White  <todd.white@thalion.global>
+	* Source/CFStringEncoding.c (CFStringEncodingTableIndex): Handle
+	unknown encodings gracefully.
+	* Tests/CFString/encodings.m: Regression test for an unknown
+	encoding.
+
 2026-04-13  Todd White <todd.white@thalion.global>
 
 	* Source/CFPropertyList.c (CFPropertyListCreateDeepCopy): Initialise
