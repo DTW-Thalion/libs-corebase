@@ -1,0 +1,19 @@
+name: deepcopy-oracle
+on: push
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run the probe against Apple CoreFoundation
+        run: |
+          clang -framework CoreFoundation Tests/oracle/deepcopy_probe.c -o oracle
+          echo "===== valid ====="
+          ./oracle valid    || echo "  (exited non-zero: $?)"
+          echo "===== badvalue ====="
+          ./oracle badvalue || echo "  (exited non-zero: $?)"
+          echo "===== badkey ====="
+          ./oracle badkey   || echo "  (exited non-zero: $?)"
+          echo "===== cyclic ====="
+          ./oracle cyclic   || echo "  (exited non-zero: $?)"
