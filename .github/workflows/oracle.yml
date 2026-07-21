@@ -1,0 +1,11 @@
+name: cf-oracle
+on:
+  push:
+    branches: [scratch/cf-oracle]
+jobs:
+  oracle:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate corebase tests against Apple CoreFoundation
+        run: bash Tests/oracle/run_oracle.sh Tests/CFError Tests/CFBag Tests/CFSet
