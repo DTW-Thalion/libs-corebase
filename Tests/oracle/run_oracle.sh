@@ -47,6 +47,7 @@ for f in $files; do
   failed=$(grep -c "Failed test:" "$bin.err")
   dashed=$(grep -c "Dashed hope:" "$bin.err")
   echo "  passed=$passed failed=$failed dashed=$dashed exit=$rc"
+  [ -s "$bin.out" ] && sed 's/^/  out: /' "$bin.out"
 
   if [ "$rc" -gt 128 ]; then
     echo "RESULT: CRASH (signal $((rc - 128)))"
