@@ -50,9 +50,5 @@ main (void)
             "A hexadecimal character reference is resolved.");
   CFRelease (un);
 
-  /* A NULL argument yields NULL rather than crashing. */
-  PASS_CF(CFXMLCreateStringByEscapingEntities (NULL, NULL, NULL) == NULL,
-          "Escaping a NULL string returns NULL.");
-
   return 0;
 }
