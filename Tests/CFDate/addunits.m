@@ -31,6 +31,9 @@ int main (void)
 {
   CFGregorianDate g;
 
+  PASS_CF(mk (2002, 1, 1) == 365.0 * 86400.0,
+    "CFGregorianDateGetAbsoluteTime converts the day count to seconds.");
+
   g = CFAbsoluteTimeGetGregorianDate (
     CFAbsoluteTimeAddGregorianUnits (mk (2001, 1, 1), NULL,
       un (1, 0, 0, 0, 0, 0)), NULL);
