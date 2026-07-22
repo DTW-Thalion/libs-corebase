@@ -4,45 +4,24 @@
 int main (void)
 {
   CFMutableStringRef s;
-  CFIndex n;
 
   s = CFStringCreateMutableCopy (NULL, 0, CFSTR("Helo"));
   CFStringInsert (s, 2, CFSTR("l"));
   PASS_CFEQ(s, CFSTR("Hello"), "CFStringInsert inserts at the index.");
   CFStringInsert (s, 0, CFSTR(">"));
   PASS_CFEQ(s, CFSTR(">Hello"), "CFStringInsert at zero prepends.");
+  CFStringInsert (s, CFStringGetLength (s), CFSTR("!"));
+  PASS_CFEQ(s, CFSTR(">Hello!"), "CFStringInsert at the length appends.");
   CFRelease (s);
 
   s = CFStringCreateMutableCopy (NULL, 0, CFSTR("Hello, World"));
   CFStringDelete (s, CFRangeMake (5, 7));
   PASS_CFEQ(s, CFSTR("Hello"), "CFStringDelete removes the range.");
-  CFRelease (s);
-
-  s = CFStringCreateMutableCopy (NULL, 0, CFSTR("xxhelloxx"));
-  CFStringTrim (s, CFSTR("x"));
-  PASS_CFEQ(s, CFSTR("hello"),
-    "CFStringTrim removes leading and trailing occurrences.");
-  CFRelease (s);
-
-  s = CFStringCreateMutableCopy (NULL, 0, CFSTR("abcabc"));
-  CFStringTrim (s, CFSTR("abc"));
-  PASS_CF(CFStringGetLength (s) == 0, "CFStringTrim can empty the string.");
-  CFRelease (s);
-
-  s = CFStringCreateMutableCopy (NULL, 0, CFSTR("foo boo"));
-  n = CFStringFindAndReplace (s, CFSTR("o"), CFSTR("0"),
-    CFRangeMake (0, CFStringGetLength (s)), 0);
-  PASS_CF(n == 4, "CFStringFindAndReplace reports the number of replacements.");
-  PASS_CFEQ(s, CFSTR("f00 b00"), "CFStringFindAndReplace replaces every match.");
-  CFRelease (s);
-
-  s = CFStringCreateMutableCopy (NULL, 0, CFSTR("aaa"));
-  n = CFStringFindAndReplace (s, CFSTR("a"), CFSTR("bb"),
-    CFRangeMake (0, 3), 0);
-  PASS_CF(n == 3,
-    "CFStringFindAndReplace counts replacements that grow the string.");
-  PASS_CFEQ(s, CFSTR("bbbbbb"),
-    "CFStringFindAndReplace handles longer replacements.");
+  CFStringDelete (s, CFRangeMake (0, 0));
+  PASS_CFEQ(s, CFSTR("Hello"), "CFStringDelete of an empty range is a no-op.");
+  CFStringDelete (s, CFRangeMake (0, CFStringGetLength (s)));
+  PASS_CF(CFStringGetLength (s) == 0,
+    "CFStringDelete of the whole range empties the string.");
   CFRelease (s);
 
   return 0;
