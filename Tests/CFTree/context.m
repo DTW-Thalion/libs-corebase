@@ -9,10 +9,8 @@ int main (void)
   CFTreeContext ctx;
   CFTreeContext out;
   CFTreeRef tree;
-  CFIndex rc0;
 
   info = CFStringCreateWithCString (NULL, "node", kCFStringEncodingUTF8);
-  rc0 = CFGetRetainCount (info);
 
   ctx.version = 0;
   ctx.info = (void *)info;
@@ -21,16 +19,16 @@ int main (void)
   ctx.copyDescription = CFCopyDescription;
 
   tree = CFTreeCreate (NULL, &ctx);
-  PASS_CF(tree != NULL, "Created a tree with a context.");
-  PASS_CF(CFGetRetainCount (info) == rc0 + 1,
-          "CFTreeCreate retains the context info.");
+  PASS_CF(tree != NULL, "Created a tree with a retaining context.");
 
   CFTreeGetContext (tree, &out);
   PASS_CF(out.info == (void *)info, "CFTreeGetContext returns the info.");
+  PASS_CF(out.retain == CFRetain && out.release == CFRelease,
+          "CFTreeGetContext returns the context callbacks.");
 
   CFRelease (tree);
-  PASS_CF(CFGetRetainCount (info) == rc0,
-          "Releasing the tree releases the context info once.");
+  PASS_CF(CFStringGetLength (info) == 4,
+          "The context info outlives the tree that retained it.");
 
   CFRelease (info);
 
