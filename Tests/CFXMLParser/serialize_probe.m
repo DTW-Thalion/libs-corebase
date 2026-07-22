@@ -15,59 +15,66 @@ node (CFXMLNodeTypeCode type, CFStringRef str, const void *info)
   return t;
 }
 
+static void
+emit (const char *label, CFXMLTreeRef doc)
+{
+  CFDataRef data = CFXMLTreeCreateXMLData (NULL, doc);
+  printf ("%s: [", label);
+  if (data)
+    {
+      fwrite (CFDataGetBytePtr (data), 1, CFDataGetLength (data), stdout);
+      CFRelease (data);
+    }
+  printf ("]\n");
+}
+
 int
 main (void)
 {
+  CFXMLDocumentInfo di;
+  CFXMLElementInfo ei;
+  CFXMLProcessingInstructionInfo pi;
+  CFStringRef keys[2];
+  CFStringRef vals[2];
   CFXMLTreeRef doc;
-  CFXMLTreeRef root;
-  CFXMLTreeRef sub;
-  CFXMLDocumentInfo docInfo;
-  CFXMLElementInfo rootInfo;
-  CFXMLElementInfo subInfo;
-  CFStringRef keys[1];
-  CFStringRef vals[1];
-  CFDataRef data;
+  CFXMLTreeRef e;
 
-  docInfo.sourceURL = NULL;
-  docInfo.encoding = kCFStringEncodingUTF8;
-  doc = node (kCFXMLNodeTypeDocument, CFSTR (""), &docInfo);
+  di.sourceURL = NULL;
+  di.encoding = kCFStringEncodingUTF8;
 
-  keys[0] = CFSTR ("a");
-  vals[0] = CFSTR ("1");
-  rootInfo.attributes = CFDictionaryCreate (NULL, (const void **)keys,
-    (const void **)vals, 1, &kCFTypeDictionaryKeyCallBacks,
+  /* Element with no attributes and a text child. */
+  doc = node (kCFXMLNodeTypeDocument, CFSTR (""), &di);
+  ei.attributes = NULL; ei.attributeOrder = NULL; ei.isEmpty = false;
+  e = node (kCFXMLNodeTypeElement, CFSTR ("e"), &ei);
+  CFTreeAppendChild (doc, e);
+  CFTreeAppendChild (e, node (kCFXMLNodeTypeText, CFSTR ("t"), NULL));
+  emit ("no-attr element", doc);
+
+  /* Two attributes; does the value get escaped? */
+  doc = node (kCFXMLNodeTypeDocument, CFSTR (""), &di);
+  keys[0] = CFSTR ("x"); vals[0] = CFSTR ("1");
+  keys[1] = CFSTR ("y"); vals[1] = CFSTR ("a&b\"c");
+  ei.attributes = CFDictionaryCreate (NULL, (const void **)keys,
+    (const void **)vals, 2, &kCFTypeDictionaryKeyCallBacks,
     &kCFTypeDictionaryValueCallBacks);
-  rootInfo.attributeOrder = CFArrayCreate (NULL, (const void **)keys, 1,
+  ei.attributeOrder = CFArrayCreate (NULL, (const void **)keys, 2,
     &kCFTypeArrayCallBacks);
-  rootInfo.isEmpty = false;
-  root = node (kCFXMLNodeTypeElement, CFSTR ("root"), &rootInfo);
-  CFTreeAppendChild (doc, root);
+  ei.isEmpty = true;
+  CFTreeAppendChild (doc, node (kCFXMLNodeTypeElement, CFSTR ("m"), &ei));
+  emit ("two-attr empty element", doc);
 
-  CFTreeAppendChild (root, node (kCFXMLNodeTypeText, CFSTR ("x & y <z>"),
-                                 NULL));
+  /* Processing instruction: node string is the target, info has the data. */
+  doc = node (kCFXMLNodeTypeDocument, CFSTR (""), &di);
+  pi.dataString = CFSTR ("type=\"text/xsl\"");
+  CFTreeAppendChild (doc, node (kCFXMLNodeTypeProcessingInstruction,
+                                CFSTR ("xml-stylesheet"), &pi));
+  emit ("processing instruction", doc);
 
-  subInfo.attributes = NULL;
-  subInfo.attributeOrder = NULL;
-  subInfo.isEmpty = true;
-  sub = node (kCFXMLNodeTypeElement, CFSTR ("sub"), &subInfo);
-  CFTreeAppendChild (root, sub);
-
-  CFTreeAppendChild (root, node (kCFXMLNodeTypeComment, CFSTR ("c"), NULL));
-
-  data = CFXMLTreeCreateXMLData (NULL, doc);
-  if (data == NULL)
-    {
-      printf ("SERIALIZED: (null)\n");
-    }
-  else
-    {
-      CFIndex len = CFDataGetLength (data);
-      const UInt8 *b = CFDataGetBytePtr (data);
-      printf ("SERIALIZED len=%ld:\n[", (long)len);
-      fwrite (b, 1, len, stdout);
-      printf ("]\n");
-      CFRelease (data);
-    }
+  /* CDATA section. */
+  doc = node (kCFXMLNodeTypeDocument, CFSTR (""), &di);
+  CFTreeAppendChild (doc, node (kCFXMLNodeTypeCDATASection,
+                                CFSTR ("a<b>&c"), NULL));
+  emit ("cdata section", doc);
 
   printf ("PROBE DONE\n");
   return 0;
