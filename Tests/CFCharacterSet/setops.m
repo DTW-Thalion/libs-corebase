@@ -1,0 +1,60 @@
+#include "CoreFoundation/CFCharacterSet.h"
+#include "../CFTesting.h"
+
+int main (void)
+{
+  CFMutableCharacterSetRef m;
+  CFCharacterSetRef a, b, copy, emoji;
+
+  a = CFCharacterSetCreateWithCharactersInString (NULL, CFSTR("abc"));
+  b = CFCharacterSetCreateWithCharactersInString (NULL, CFSTR("cd"));
+
+  m = CFCharacterSetCreateMutableCopy (NULL, a);
+  CFCharacterSetUnion (m, b);
+  PASS_CF(CFCharacterSetIsCharacterMember (m, 'a')
+      && CFCharacterSetIsCharacterMember (m, 'd'),
+    "CFCharacterSetUnion adds the other set's members.");
+  CFRelease (m);
+
+  m = CFCharacterSetCreateMutableCopy (NULL, a);
+  CFCharacterSetIntersect (m, b);
+  PASS_CF(CFCharacterSetIsCharacterMember (m, 'c')
+      && !CFCharacterSetIsCharacterMember (m, 'a'),
+    "CFCharacterSetIntersect keeps only common members.");
+  CFRelease (m);
+
+  m = CFCharacterSetCreateMutableCopy (NULL, a);
+  CFCharacterSetInvert (m);
+  PASS_CF(!CFCharacterSetIsCharacterMember (m, 'a')
+      && CFCharacterSetIsCharacterMember (m, 'z'),
+    "CFCharacterSetInvert flips membership.");
+  CFRelease (m);
+
+  copy = CFCharacterSetCreateCopy (NULL, a);
+  PASS_CF(CFEqual (copy, a), "CFCharacterSetCreateCopy equals the original.");
+  CFRelease (copy);
+
+  emoji = CFCharacterSetCreateWithCharactersInRange (NULL,
+    CFRangeMake (0x1F600, 1));
+  PASS_CF(CFCharacterSetIsLongCharacterMember (emoji, 0x1F600),
+    "CFCharacterSetIsLongCharacterMember finds a supplementary character.");
+  PASS_CF(!CFCharacterSetIsLongCharacterMember (emoji, 0x1F601),
+    "CFCharacterSetIsLongCharacterMember rejects an absent character.");
+  CFRelease (emoji);
+
+  m = CFCharacterSetCreateMutable (NULL);
+  CFCharacterSetAddCharactersInString (m, CFSTR("xy"));
+  PASS_CF(CFCharacterSetIsCharacterMember (m, 'x')
+      && !CFCharacterSetIsCharacterMember (m, 'z'),
+    "CFCharacterSetAddCharactersInString adds the string's members.");
+  CFCharacterSetRemoveCharactersInRange (m, CFRangeMake ('x', 1));
+  PASS_CF(!CFCharacterSetIsCharacterMember (m, 'x')
+      && CFCharacterSetIsCharacterMember (m, 'y'),
+    "CFCharacterSetRemoveCharactersInRange removes a range.");
+  CFRelease (m);
+
+  CFRelease (a);
+  CFRelease (b);
+
+  return 0;
+}
