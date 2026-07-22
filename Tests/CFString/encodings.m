@@ -50,7 +50,7 @@ int main (void)
   PASS_CF(num == 12, "Maximum size for 4 UTF-8 characters is 12 bytes.");
   
   str_utf16 = CFStringConvertEncodingToIANACharSetName (kCFStringEncodingUTF16);
-  PASS_CFEQ (str_utf16, CFSTR("UTF-16"), "Correctly converts to IANA Char Set.");
+  PASS_CFEQ (str_utf16, CFSTR("utf-16"), "Correctly converts to IANA Char Set.");
   
   CFRelease(str_utf16);
   
