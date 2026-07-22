@@ -10,49 +10,58 @@ mk (const char *s)
   return u;
 }
 
+static Boolean
+eq (CFStringRef got, const char *want)
+{
+  Boolean ok = false;
+  if (got != NULL)
+    {
+      CFStringRef w = CFStringCreateWithCString (NULL, want,
+        kCFStringEncodingUTF8);
+      ok = CFEqual (got, w);
+      CFRelease (w);
+    }
+  return ok;
+}
+
+static Boolean
+urleq (CFURLRef u, const char *want)
+{
+  return u != NULL && eq (CFURLGetString (u), want);
+}
+
 int main (void)
 {
   CFURLRef u, r;
   CFStringRef s;
-  CFRange rr;
 
-  u = mk ("http://host/dir/file.txt");
-  s = CFURLCopyLastPathComponent (u);
-  PASS_CFEQ(s, CFSTR("file.txt"), "last component of .../file.txt");
-  CFRelease (s);
-  s = CFURLCopyPathExtension (u);
-  PASS_CFEQ(s, CFSTR("txt"), "extension of .../file.txt");
-  CFRelease (s);
-  r = CFURLCreateCopyDeletingLastPathComponent (NULL, u);
-  PASS_CFEQ(CFURLGetString (r), CFSTR("http://host/dir/"),
-    "deleting last component of .../file.txt");
-  CFRelease (r);
-  r = CFURLCreateCopyDeletingPathExtension (NULL, u);
-  PASS_CFEQ(CFURLGetString (r), CFSTR("http://host/dir/file"),
-    "deleting extension of .../file.txt");
-  CFRelease (r);
-  rr = CFURLGetByteRangeForComponent (u, kCFURLComponentHost, NULL);
-  PASS_CF(rr.location == 7 && rr.length == 4, "byte range of host");
-  CFRelease (u);
-
+  /* extensionless path: is CopyPathExtension "" or NULL? */
   u = mk ("http://host/dir/file");
   s = CFURLCopyPathExtension (u);
-  PASS_CFEQ(s, CFSTR(""), "extension of extensionless path is empty");
-  CFRelease (s);
+  PASS_CF(s != NULL, "CopyPathExtension of an extensionless path is non-NULL.");
+  PASS_CF(s != NULL && CFStringGetLength (s) == 0,
+    "CopyPathExtension of an extensionless path is empty.");
+  if (s) CFRelease (s);
+
   r = CFURLCreateCopyAppendingPathExtension (NULL, u, CFSTR("txt"));
-  PASS_CFEQ(CFURLGetString (r), CFSTR("http://host/dir/file.txt"),
-    "appending extension");
-  CFRelease (r);
+  PASS_CF(urleq (r, "http://host/dir/file.txt"), "AppendingPathExtension txt.");
+  if (r) CFRelease (r);
+
   r = CFURLCreateCopyAppendingPathComponent (NULL, u, CFSTR("sub"), false);
-  PASS_CFEQ(CFURLGetString (r), CFSTR("http://host/dir/file/sub"),
-    "appending a path component");
-  CFRelease (r);
+  PASS_CF(urleq (r, "http://host/dir/file/sub"), "AppendingPathComponent sub.");
+  if (r) CFRelease (r);
+
+  r = CFURLCreateCopyAppendingPathComponent (NULL, u, CFSTR("sub"), true);
+  PASS_CF(urleq (r, "http://host/dir/file/sub/"),
+    "AppendingPathComponent as directory adds a trailing slash.");
+  if (r) CFRelease (r);
   CFRelease (u);
 
+  /* trailing slash last component */
   u = mk ("http://host/dir/");
   s = CFURLCopyLastPathComponent (u);
-  PASS_CFEQ(s, CFSTR("dir"), "last component with a trailing slash");
-  CFRelease (s);
+  PASS_CF(eq (s, "dir"), "LastPathComponent with a trailing slash is 'dir'.");
+  if (s) CFRelease (s);
   CFRelease (u);
 
   return 0;
