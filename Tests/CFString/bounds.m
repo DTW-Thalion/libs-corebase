@@ -41,14 +41,14 @@ int main (void)
     "CFStringGetParagraphBounds does not break on a line separator.");
   CFRelease (s);
 
-  /* U+0085 NEL: breaks both a line and a paragraph. */
+  /* U+0085 NEL: breaks a line but not a paragraph. */
   s = make (0x0085);
   CFStringGetLineBounds (s, CFRangeMake (0, 1), &b, &e, &c);
   PASS_CF(b == 0 && c == 1 && e == 2,
     "CFStringGetLineBounds breaks on NEL.");
   CFStringGetParagraphBounds (s, CFRangeMake (0, 1), &b, &e, &c);
-  PASS_CF(b == 0 && c == 1 && e == 2,
-    "CFStringGetParagraphBounds breaks on NEL.");
+  PASS_CF(b == 0 && c == 3 && e == 3,
+    "CFStringGetParagraphBounds does not break on NEL.");
   CFRelease (s);
 
   /* U+2029 paragraph separator: breaks both a line and a paragraph. */
