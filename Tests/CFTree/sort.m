@@ -16,9 +16,13 @@ mkc (int *val)
 static CFComparisonResult
 cmpInt (const void *a, const void *b, void *context)
 {
-  int x = *(const int *) a;
-  int y = *(const int *) b;
+  CFTreeContext ca, cb;
+  int x, y;
   (void)context;
+  CFTreeGetContext ((CFTreeRef) a, &ca);
+  CFTreeGetContext ((CFTreeRef) b, &cb);
+  x = *(const int *) ca.info;
+  y = *(const int *) cb.info;
   if (x < y)
     return kCFCompareLessThan;
   if (x > y)
