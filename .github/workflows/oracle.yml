@@ -8,4 +8,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate corebase tests against Apple CoreFoundation
-        run: bash Tests/oracle/run_oracle.sh Tests/CFString/decode.m Tests/CFString/getbytes.m Tests/CFString/external_rep.m
+        run: bash Tests/oracle/run_oracle.sh Tests/CFString/decode_utf32.m
