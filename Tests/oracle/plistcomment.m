@@ -12,7 +12,7 @@ show (const char *name, const UInt8 *bytes, CFIndex len)
   data = CFDataCreate (NULL, bytes, len);
   plist = CFPropertyListCreateWithData (NULL, data, kCFPropertyListImmutable,
                                         NULL, &err);
-  printf ("%-26s len=%5ld -> ", name, (long) len);
+  printf ("%-34s len=%5ld -> ", name, (long) len);
   if (plist == NULL)
     {
       printf ("NULL");
@@ -34,7 +34,7 @@ show (const char *name, const UInt8 *bytes, CFIndex len)
     {
       CFStringRef type = CFCopyTypeIDDescription (CFGetTypeID (plist));
       CFStringRef desc = CFCopyDescription (plist);
-      char tb[120], db[400];
+      char tb[120], db[300];
 
       if (!CFStringGetCString (type, tb, sizeof tb, kCFStringEncodingUTF8))
         strcpy (tb, "?");
@@ -53,34 +53,55 @@ show (const char *name, const UInt8 *bytes, CFIndex len)
   CFRelease (data);
 }
 
+/* Build <prefix> followed by a "//" comment padded with spaces to a total
+   of len bytes, with no trailing newline. */
+static CFIndex
+build (UInt8 *buf, const char *prefix, const char *comment, CFIndex len)
+{
+  size_t p = strlen (prefix);
+  size_t c = strlen (comment);
+
+  memcpy (buf, prefix, p);
+  memcpy (buf + p, comment, c);
+  memset (buf + p + c, ' ', len - p - c);
+  return len;
+}
+
 int
 main (void)
 {
   UInt8 buf[1200];
+  CFIndex n;
 
-  show ("empty", (const UInt8 *) "", 0);
-  show ("space only", (const UInt8 *) " ", 1);
-  show ("// short no newline", (const UInt8 *) "// x", 4);
-  show ("// short with newline", (const UInt8 *) "// x\n", 5);
-  show ("/* */ only", (const UInt8 *) "/* x */", 7);
-  show ("/* unterminated", (const UInt8 *) "/* x", 4);
-  show ("// then value", (const UInt8 *) "// x\nfoo", 8);
-  show ("bare word", (const UInt8 *) "foo", 3);
-  show ("quoted string", (const UInt8 *) "\"foo\"", 5);
-  show ("empty dict", (const UInt8 *) "{}", 2);
+  show ("short: ( foo", (const UInt8 *) "(foo", 4);
+  show ("short: ( foo //c", (const UInt8 *) "(foo //c", 8);
+  show ("short: { a = b;", (const UInt8 *) "{a=b;", 5);
+  show ("short: { a = b; //c", (const UInt8 *) "{a=b; //c", 9);
+  show ("short: { a = b; } trailing //c",
+        (const UInt8 *) "{a=b;} //c", 10);
+  show ("short: ( foo ) trailing //c", (const UInt8 *) "(foo) //c", 9);
+  show ("short: quoted then //c", (const UInt8 *) "\"foo\" //c", 9);
 
-  memset (buf, 'a', 1100);
-  show ("1100 bare chars", buf, 1100);
+  n = build (buf, "(foo", "//", 1102);
+  show ("big: ( foo //<pad>", buf, n);
 
-  buf[0] = '/';
-  buf[1] = '/';
-  memset (buf + 2, ' ', 1100);
-  show ("// + 1100 spaces", buf, 1102);
+  n = build (buf, "{a=b;", "//", 1102);
+  show ("big: { a = b; //<pad>", buf, n);
 
-  buf[0] = '/';
-  buf[1] = '/';
-  memset (buf + 2, 'a', 1100);
-  show ("// + 1100 chars", buf, 1102);
+  n = build (buf, "(foo", "/*", 1102);
+  show ("big: ( foo /*<pad>", buf, n);
+
+  n = build (buf, "(foo,", "//", 1102);
+  show ("big: ( foo , //<pad>", buf, n);
+
+  n = build (buf, "{a=b;}", "//", 1102);
+  show ("big: { a = b; } //<pad>", buf, n);
+
+  n = build (buf, "(foo)", "//", 1102);
+  show ("big: ( foo ) //<pad>", buf, n);
+
+  n = build (buf, "\"foo\"", "//", 1102);
+  show ("big: quoted //<pad>", buf, n);
 
   return 0;
 }
